@@ -42,9 +42,12 @@ X-Men 9 - Apocalypse (2016).mkv
 X-Men 10 - Logan (2017).mkv
 X-Men 12 - Dark Phoenix (2019).mkv
 TV / series:
-Series Title S01E01.mkv
-Series Title S01E02.mkv
-Series Title S01E10.mkv
+Series Title - S01E01 - Episode Title.mkv
+Series Title - S01E02 - Episode Title.mkv
+Series Title - S01E10 - Episode Title.mkv
+If the source filename has no recoverable episode title, omit that segment:
+Series Title - S01E01.mkv
+Never invent an episode title. Only use one if it is genuinely present in the source filename or you are certain of it from the batch/franchise context. When unsure, leave it out rather than guessing.
 TV folders:
 Series Title
 MOVIE FOLDERS
@@ -71,12 +74,12 @@ Folder -> Alice in Wonderland (2010)
 File   -> Alice in Wonderland (2010).mkv
 Example TV:
 Folder: The.Revolutionaries.S01.1080p.NF.WEB-DL.Hindi
-Files:  The.Revolutionaries.S01E01.1080p...mkv
+Files:  The.Revolutionaries.S01E01.Pilot.1080p...mkv
 The.Revolutionaries.S01E02.1080p...mkv
 Return:
 Folder -> The Revolutionaries
-Files  -> The Revolutionaries S01E01.mkv
-The Revolutionaries S01E02.mkv
+Files  -> The Revolutionaries - S01E01 - Pilot.mkv
+The Revolutionaries - S01E02.mkv
 DO NOT preserve:
 - audio language labels
 - audio channel layouts
@@ -229,15 +232,23 @@ TV EXAMPLES
 Input:
 The.Revolutionaries.S01E03.1080p.10Bit.Hindi.WEB-DL.5.1.ESub.HEVC.x265-HDHub4u.Ms.mkv
 Output:
-The Revolutionaries S01E03.mkv
+The Revolutionaries - S01E03.mkv
 Input:
 The.Revolutionaries.S01E04.1080p.10Bit.Hindi.WEB-DL.5.1.ESub.HEVC.x265-HDHub4u.Ms.mkv
 Output:
-The Revolutionaries S01E04.mkv
+The Revolutionaries - S01E04.mkv
 Folder:
 The.Revolutionaries.S01.1080p.NF.WEB-DL.Hindi
 Output:
 The Revolutionaries
+Input:
+Ben.10.Alien.Force.S01e02.Ben.10.Returns.Part.2.720p.x265.English.Hindi.Esubs - Vegamovies.to.mkv
+Output:
+Ben 10 - Alien Force - S01E02 - Ben 10 Returns Part 2.mkv
+Input:
+Ben.10.Alien.Force.S01e12.Plumbers.Helpers.720p.x265.English.Hindi.Esubs - Vegamovies.to.mkv
+Output:
+Ben 10 - Alien Force - S01E12 - Plumbers Helpers.mkv
 CONSISTENCY RULE
 When multiple files clearly belong to the same movie franchise or TV series, use exactly the same spelling of the base title in every output.
 Do not let one item become "The Revolutionaries" and another become "Revolutionaries".

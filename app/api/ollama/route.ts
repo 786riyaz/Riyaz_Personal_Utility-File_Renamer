@@ -4,13 +4,14 @@ import { OLLAMA_REQUEST_TIMEOUT_MS } from "@/lib/config";
 
 export const runtime = "nodejs";
 
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "qwen2.5:7b";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "qwen3.5:9b";
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 // Safety net only — the client chunks requests to lib/config's
-// OLLAMA_BATCH_SIZE (12) by default, which is small enough for a 7B model
-// to reliably name in one pass. This cap just stops an accidental huge
+// OLLAMA_BATCH_SIZE by default, which is small enough for a local model to
+// reliably name in one pass. This cap just stops an accidental huge
 // request from tying up Ollama for minutes.
 const MAX_ITEMS_PER_REQUEST = 60;
+const DEBUG = process.env.OLLAMA_DEBUG === "1";
 
 type InItem = { name: string; kind: "file" | "folder"; relativePath: string };
 
@@ -24,13 +25,42 @@ function extension(name: string) {
 }
 
 /**
+ * Reasoning-capable models (qwen3.x, deepseek-r1, etc.) can put their whole
+ * answer into Ollama's separate "thinking" field and leave "response"
+ * completely empty — even when a structured `format` schema was requested
+ * and the model answered correctly. That is exactly what was causing every
+ * request to fail with "Ollama returned no usable names for this batch":
+ * the JSON was there the whole time, just in a field this route never read.
+ *
+ * Two defenses, used together:
+ *   1. The request below sends `think: false` to ask Ollama to turn
+ *      reasoning off for this call, so the answer goes straight to
+ *      "response" (supported on Ollama builds new enough to expose it for
+ *      the given model).
+ *   2. If "response" still comes back empty, fall back to "thinking", and
+ *      strip any literal <think>...</think> wrapper some chat templates
+ *      inline directly into plain text instead of a separate field.
+ */
+function extractRawText(data: { response?: unknown; thinking?: unknown }): string {
+  const response = typeof data.response === "string" ? data.response.trim() : "";
+  if (response) return stripThinkTags(response);
+  const thinking = typeof data.thinking === "string" ? data.thinking.trim() : "";
+  return stripThinkTags(thinking);
+}
+
+function stripThinkTags(text: string): string {
+  const stripped = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  return stripped || text.trim();
+}
+
+/**
  * Parses whatever Ollama returned into a fixed-length array of suggestions
  * (one slot per input item, "" for anything the model skipped).
  *
  * This replaces the old behaviour of hard-failing the whole request with
  * "Ollama returned N names for M items." That error threw away every good
  * suggestion in the batch just because the count didn't line up exactly —
- * which happens often with local 7B-class models on batches over ~15 items.
+ * which happens often with local models on batches over ~15 items.
  *
  * The model is asked for {index, name} objects (see prompts/movie-renamer.txt)
  * specifically so a skipped or reordered item doesn't corrupt every
@@ -115,7 +145,7 @@ export async function POST(req: NextRequest) {
     }
     if (items.length > MAX_ITEMS_PER_REQUEST) {
       return NextResponse.json(
-        { error: `Please send at most ${MAX_ITEMS_PER_REQUEST} filenames per request. The app normally chunks requests automatically into batches of a dozen — try again.` },
+        { error: `Please send at most ${MAX_ITEMS_PER_REQUEST} filenames per request. The app normally chunks requests automatically into small batches — try again.` },
         { status: 400 }
       );
     }
@@ -131,6 +161,10 @@ export async function POST(req: NextRequest) {
           model,
           prompt,
           stream: false,
+          // Turn reasoning off so the answer lands in "response" instead of
+          // a separate "thinking" channel. Ignored harmlessly by models
+          // that don't support toggling it.
+          think: false,
           format: {
             type: "array",
             minItems: items.length,
@@ -167,12 +201,19 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await response.json();
-    const raw = typeof data?.response === "string" ? data.response : "";
+    const raw = extractRawText(data);
     const { suggestions: rawSuggestions, matched } = parseSuggestions(raw, items.length);
+
+    if (DEBUG) {
+      console.log(`[ollama] model=${model} items=${items.length} matched=${matched} response_len=${(data?.response ?? "").length} thinking_len=${(data?.thinking ?? "").length}`);
+    }
 
     if (matched === 0) {
       return NextResponse.json(
-        { error: "Ollama returned no usable names for this batch. Try again, use a smaller selection, or switch models.", raw: raw.slice(0, 1000) },
+        {
+          error: "Ollama returned no usable names for this batch. Try again, use a smaller selection, or switch models.",
+          raw: raw.slice(0, 1000),
+        },
         { status: 502 }
       );
     }

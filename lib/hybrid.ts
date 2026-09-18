@@ -6,9 +6,10 @@ import { forceSameExtension, getExtension } from "./rename";
 const META_WORDS = [
   "1080p", "720p", "2160p", "4320p", "1440p", "4k", "8k", "2k", "10bit", "8bit",
   "hdr10+", "hdr10", "hdr", "dolby vision", "dolbyvision", "dv", "hevc", "h265", "h.265", "x265", "x264", "h264", "h.264", "avc", "av1", "mpeg4",
-  "web-dl", "web dl", "webdl", "webrip", "web-rip", "web", "bluray", "blu-ray", "brrip", "bdrip", "dvdrip", "hdtv", "hdtc", "hdcam", "hdts", "cam", "pre-hd", "ds4k", "uhd", "fhd", "remux",
-  "aac", "ac3", "eac3", "dd2.0", "dd5.1", "dd7.1", "dd", "dts-hd", "dts", "truehd", "atmos",
+  "web-dl", "web dl", "webdl", "webrip", "web-rip", "web", "bluray", "blu-ray", "brrip", "bdrip", "dvdrip", "hdtv", "hdtc", "hdcam", "hdts", "cam", "line", "pre-hd", "ds4k", "uhd", "fhd", "remux",
+  "aac", "ac3", "eac3", "dd2.0", "dd5.1", "dd7.1", "dd", "ddp", "ddp2.0", "ddp5.1", "ddp7.1", "dts-hd", "dts", "truehd", "atmos",
   "dual audio", "dual-audio", "multiaudio", "multi audio", "hindi", "english", "tamil", "telugu", "malayalam", "kannada", "bengali", "marathi", "punjabi", "gujarati", "urdu", "french", "german", "spanish", "korean", "japanese",
+  "hin", "eng", "tam", "tel", "mal", "kan", "mar", "pun", "guj", "urd", "multi",
   "esub", "esubs", "e-sub", "e-subs", "sub", "subs", "subtitle", "subtitles", "hardsub", "hard-sub", "hc",
   "proper", "repack", "remastered", "extended", "unrated", "director's cut", "directors cut", "imax", "limited", "complete", "internal", "re-release", "re-release",
   "netflix", "nf", "mxplayer", "mx player", "youtube", "amazon prime", "prime video", "primevideo", "amzn", "amazon", "disney+", "disney plus", "hotstar", "disney+ hotstar", "jio cinema", "jiocinema", "zee5", "sonyliv", "sony liv", "apple tv+", "apple tv", "hulu", "hbo max", "max", "paramount+", "paramount plus", "lionsgate play", "aha", "sun nxt", "hoichoi", "manoramamax", "eros now", "altbalaji", "altt", "voot",
@@ -24,9 +25,14 @@ function escapeRegExp(value: string) {
 
 function removeMetadata(s: string) {
   let out = s;
-  // Audio channel layouts can appear as "5.1", "5 1", "2.0", etc. They are
-  // metadata, while ordinary title numbers (e.g. "Vadh 2") are retained.
-  out = out.replace(/\b(?:1|2|5|7)\s*[.]?\s*(?:0|1)\s*(?:ch|channels?)?\b/gi, " ");
+  // Audio channel layouts always have an explicit separator between the two
+  // digits in real release names: "5.1", "5 1", "5_1", "2.0", or a bare
+  // "5ch"/"7channels" suffix. Requiring that separator (instead of making it
+  // optional) is what stops this from eating plain title numbers like
+  // "Ben 10", "X-Men 11", "Vadh 20" — those have no separator between the
+  // two digits, so "10" is never mistaken for "1" + "0".
+  out = out.replace(/\b[1257][.\s_][01]\s*(?:ch|channels?)?\b/gi, " ");
+  out = out.replace(/\b[1257](?:ch|channels?)\b/gi, " ");
   out = out.replace(/\b(?:dual\s*audio|multi\s*audio|dual-audio)\b/gi, " ");
   out = out.replace(META, " ");
   // Release-group suffixes frequently occur after a hyphen, including variants
@@ -40,7 +46,7 @@ function cleanPunctuation(s: string) {
     .replace(/[\[{]/g, "(")
     .replace(/[\]}]/g, ")")
     .replace(/\s*[._]+\s*/g, " ")
-    .replace(/\s*[-–—]\s*/g, " - ")
+    .replace(/\s+[-–—]\s*|\s*[-–—]\s+/g, " - ")
     .replace(/\s*\/\s*/g, " - ")
     .replace(/\s+/g, " ")
     .replace(/\(\s+/g, "(")
@@ -56,14 +62,31 @@ function extractYear(s: string) {
 
 function normalizeEpisode(titlePart: string, ext: string) {
   const ep = titlePart.match(/\bS(\d{1,2})\s*(?:E|Ep)\s*(\d{1,3})\b/i);
-  if (!ep) return null;
+  if (!ep || ep.index === undefined) return null;
   const before = titlePart.slice(0, ep.index).trim();
+  const after = titlePart.slice(ep.index + ep[0].length).trim();
   const series = cleanPunctuation(removeMetadata(before));
   const episode = `S${ep[1].padStart(2, "0")}E${ep[2].padStart(2, "0")}`;
-  // Episode titles are intentionally dropped by default: the user's library
-  // convention is Series SxxExx.ext unless they manually restore one.
-  const final = [series, episode].filter(Boolean).join(" ");
+  const episodeTitle = extractEpisodeTitle(after);
+  const final = episodeTitle ? `${series} - ${episode} - ${episodeTitle}` : `${series} - ${episode}`;
   return `${final}${ext}`;
+}
+
+// Recovers the human episode title that sits between the SxxExx code and
+// the first metadata token (resolution, codec, language, release group...),
+// e.g. "...S01E02.Ben.10.Returns.Part.2.720p.x265..." -> "Ben 10 Returns Part 2".
+// This only ever surfaces text that was already in the source filename —
+// nothing is invented — so it stays safe for the strict number-matching
+// guard in hybridNormalize below.
+function extractEpisodeTitle(after: string) {
+  const text = after.replace(/^[\s._-]+/, "");
+  META.lastIndex = 0;
+  const metaIdx = text.search(META);
+  META.lastIndex = 0;
+  const chunk = metaIdx >= 0 ? text.slice(0, metaIdx) : text;
+  const title = cleanPunctuation(chunk).replace(/^[-\s]+|[-\s]+$/g, "").trim();
+  if (title.length < 2 || !/[A-Za-z]/.test(title)) return "";
+  return title;
 }
 
 function formatMovieTitle(title: string) {
@@ -78,7 +101,7 @@ function formatMovieTitle(title: string) {
     const rest = m[3].trim();
     // Avoid converting ordinary numeric title phrases where the number is
     // clearly the final title token.
-    if (!/^\d/.test(rest)) title = `${prefix}${m[2]} - ${rest}`;
+    if (!/^\d/.test(rest)) title = `${prefix} ${m[2]} - ${rest}`;
   }
   title = title
     .replace(/\s+-\s+-\s+/g, " - ")

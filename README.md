@@ -79,6 +79,41 @@ OLLAMA_MODEL=qwen2.5:7b
    deterministic parser cleanly removed it, falling back to the
    deterministic name in that case.
 
+6. **Reasoning models (qwen3.x etc.) returned empty `response`, causing
+   every batch to 502 as "Ollama returned no usable names."** Ollama was
+   putting the model's entire JSON answer into a separate `thinking`
+   field instead of `response`. The request now sends `think: false`, and
+   as a safety net the route also falls back to reading `thinking` (and
+   stripping any inline `<think>...</think>` wrapper) if `response` comes
+   back empty.
+
+7. **TV episodes now keep their episode title** when one is recoverable
+   from the source filename: `Series - S01E02 - Episode Title.mkv`,
+   falling back to `Series - S01E02.mkv` when no title is present. Nothing
+   is invented — the deterministic parser only surfaces text that was
+   already in the source name, which also lets the AI-suggestion safety
+   checks trust a good Ollama answer instead of discarding it.
+
+8. **Fixed a title-mangling bug in the deterministic cleaner**: numbers
+   like the "10" in "Ben 10" or "11" in similar titles were being silently
+   eaten because the audio-channel-layout cleanup (meant for things like
+   "5.1"/"2.0") matched *any* two adjacent digits, separator or not. It now
+   requires an explicit separator between the digits, so plain title
+   numbers are left alone while real channel layouts still get stripped.
+
+9. **Fixed compound-word titles being split**: `X-Men` was becoming
+   `X - Men` because punctuation cleanup forced spaces around every
+   hyphen. It now only normalizes hyphens that already have whitespace on
+   at least one side, leaving tight compound titles (`X-Men`,
+   `Spider-Man`, `Ant-Man`) alone.
+
+10. **Fixed a missing space in sequel numbering** (`Thor2 - The Dark
+    World` instead of `Thor 2 - The Dark World`).
+
+11. Added missing metadata vocabulary seen in real release names: short
+    language codes (`HIN`, `ENG`, `TAM`, ...), `DDP`/`DDP5.1`-style audio
+    tags, and the `LiNE` source-print tag.
+
 ## Notes
 
 - The selected root folder itself is never renamed, only its contents.

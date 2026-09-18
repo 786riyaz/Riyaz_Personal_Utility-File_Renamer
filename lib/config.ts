@@ -9,7 +9,7 @@
 //   2. Never hard-fail on a partial batch — match returned names by index,
 //      and let the caller fall back to the deterministic name for anything
 //      Ollama skipped.
-export const OLLAMA_BATCH_SIZE = 12;
+export const OLLAMA_BATCH_SIZE = 10;
 
 // Client-side per-request timeout budget. Kept generous because local
 // models on modest hardware can be slow, especially on the first call
